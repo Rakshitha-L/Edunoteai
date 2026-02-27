@@ -1,11 +1,8 @@
 import streamlit as st
-import whisper
 import re
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from fpdf import FPDF
-import tempfile
 import torch
-import os
 
 torch.set_num_threads(1)
 
@@ -14,26 +11,18 @@ torch.set_num_threads(1)
 # -----------------------------------------
 st.set_page_config(page_title="EduNote AI", layout="wide")
 st.title("🎓 EduNote AI")
-st.subheader("Lecture Voice → Smart Notes Generator")
+st.subheader("Lecture Text → Smart Notes Generator")
 
 # -----------------------------------------
-# Load Models (Optimized for Cloud)
+# Load Models (Cached)
 # -----------------------------------------
 @st.cache_resource
 def load_models():
-    device = torch.device("cpu")
-
-    # Whisper (Smallest Stable Version)
-    speech_model = whisper.load_model("tiny", device="cpu")
-
-    # Lightweight T5 Model
     tokenizer = AutoTokenizer.from_pretrained("t5-small")
-    model = AutoModelForSeq2SeqLM.from_pretrained("t5-small").to(device)
+    model = AutoModelForSeq2SeqLM.from_pretrained("t5-small")
+    return tokenizer, model
 
-    return speech_model, tokenizer, model
-
-
-speech_model, tokenizer, model = load_models()
+tokenizer, model = load_models()
 
 # -----------------------------------------
 # Text Cleaning
@@ -44,41 +33,42 @@ def clean_text(text):
     return text.strip()
 
 # -----------------------------------------
-# Summarization (Memory Optimized)
+# Summarization
 # -----------------------------------------
-def summarize_text(text, max_len=150):
+def summarize_text(text, max_len=200):
+    input_text = "summarize: " + text
     inputs = tokenizer.encode(
-        text,
+        input_text,
         return_tensors="pt",
         max_length=512,
         truncation=True
     )
 
-    with torch.no_grad():
-        summary_ids = model.generate(
-            inputs,
-            max_length=max_len,
-            min_length=40,
-            num_beams=2,
-            early_stopping=True
-        )
+    summary_ids = model.generate(
+        inputs,
+        max_length=max_len,
+        min_length=50,
+        length_penalty=2.0,
+        num_beams=4,
+        early_stopping=True
+    )
 
     summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
     return summary
 
 # -----------------------------------------
-# Key Points
+# Key Points Generator
 # -----------------------------------------
 def generate_keypoints(text):
-    prompt = f"Extract 5 key points from this lecture:\n{text}"
-    return summarize_text(prompt, max_len=120)
+    prompt = "summarize and extract 5 key points: " + text
+    return summarize_text(prompt, max_len=150)
 
 # -----------------------------------------
-# Quiz Questions
+# Quiz Generator
 # -----------------------------------------
 def generate_quiz(text):
-    prompt = f"Generate 3 short quiz questions from this lecture:\n{text}"
-    return summarize_text(prompt, max_len=120)
+    prompt = "generate 3 short quiz questions from this text: " + text
+    return summarize_text(prompt, max_len=150)
 
 # -----------------------------------------
 # PDF Generator
@@ -93,58 +83,39 @@ def generate_pdf(content):
     return file_path
 
 # -----------------------------------------
-# Upload Audio
+# User Input Section
 # -----------------------------------------
-uploaded_file = st.file_uploader("Upload Lecture Audio File", type=["mp3", "wav"])
+text_input = st.text_area(
+    "📚 Paste Your Lecture Text Here",
+    height=250
+)
 
-if uploaded_file is not None:
+if text_input:
+    cleaned_text = clean_text(text_input)
 
-    st.audio(uploaded_file)
-
-    # Save audio temporarily
-    with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
-        tmp_file.write(uploaded_file.read())
-        temp_path = tmp_file.name
-
-    # Step 1: Transcription
-    st.info("Transcribing audio...")
-    result = speech_model.transcribe(temp_path)
-    raw_text = result["text"]
-
-    # Delete temp file to save memory
-    os.remove(temp_path)
-
-    st.success("Transcription Completed!")
-
-    cleaned_text = clean_text(raw_text)
-
-    st.subheader("📄 Transcribed Text")
+    st.subheader("📄 Cleaned Text")
     st.write(cleaned_text)
 
-    # Step 2: Summary
+    # Summary
     st.info("Generating Summary...")
     summary_text = summarize_text(cleaned_text)
-
     st.subheader("📝 Summary")
     st.write(summary_text)
 
-    # Step 3: Key Points
+    # Key Points
     st.info("Generating Key Points...")
     keypoints = generate_keypoints(cleaned_text)
-
     st.subheader("📌 Key Points")
     st.write(keypoints)
 
-    # Step 4: Quiz
+    # Quiz
     st.info("Generating Quiz Questions...")
     quiz = generate_quiz(cleaned_text)
-
     st.subheader("❓ Quiz Questions")
     st.write(quiz)
 
-    # Step 5: PDF Download
+    # PDF Download
     if st.button("Download Notes as PDF"):
-
         full_content = f"""
 SUMMARY:
 {summary_text}
@@ -155,7 +126,6 @@ KEY POINTS:
 QUIZ:
 {quiz}
 """
-
         pdf_file = generate_pdf(full_content)
 
         with open(pdf_file, "rb") as f:
