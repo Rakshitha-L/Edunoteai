@@ -15,7 +15,7 @@ st.subheader("Lecture Text → Smart Structured Notes Generator")
 # -----------------------------------------
 @st.cache_resource
 def load_model():
-    model_name = "google/flan-t5-large"
+    model_name = "google/flan-t5-base"
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
     return tokenizer, model
@@ -41,15 +41,16 @@ def generate_output(prompt, max_len=250):
         truncation=True
     )
 
-    output_ids = model.generate(
-        inputs.input_ids,
-        max_length=max_len,
-        min_length=80,
-        num_beams=5,
-        no_repeat_ngram_size=3,
-        repetition_penalty=1.5,
-        early_stopping=True
-    )
+  output_ids = model.generate(
+    inputs.input_ids,
+    max_length=max_len,
+    min_length=60,
+    num_beams=3,
+    no_repeat_ngram_size=2,
+    repetition_penalty=1.2,
+    early_stopping=True
+)
+    ) 
 
     return tokenizer.decode(output_ids[0], skip_special_tokens=True)
 
@@ -143,3 +144,4 @@ QUIZ QUESTIONS:
                     f,
                     file_name="Lecture_Notes.pdf"
                 )
+
