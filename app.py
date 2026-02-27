@@ -6,24 +6,26 @@ import torch
 
 torch.set_num_threads(1)
 
+# -----------------------------------------
+# Page Configuration
+# -----------------------------------------
 st.set_page_config(page_title="EduNote AI", layout="wide")
 st.title("🎓 EduNote AI")
-st.subheader("Lecture Text → Smart Structured Notes Generator")
+st.subheader("Lecture Text → Smart Notes Generator")
 
 # -----------------------------------------
-# Load Model
+# Load Model (Cached)
 # -----------------------------------------
 @st.cache_resource
 def load_model():
-    model_name = "google/flan-t5-base"
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+    tokenizer = AutoTokenizer.from_pretrained("t5-small")
+    model = AutoModelForSeq2SeqLM.from_pretrained("t5-small")
     return tokenizer, model
 
 tokenizer, model = load_model()
 
 # -----------------------------------------
-# Clean Text
+# Text Cleaning
 # -----------------------------------------
 def clean_text(text):
     text = re.sub(r'\b(um|ah|okay|so|like)\b', '', text, flags=re.IGNORECASE)
@@ -31,11 +33,9 @@ def clean_text(text):
     return text.strip()
 
 # -----------------------------------------
-# AI Generator
+# Generate Output (Core Function)
 # -----------------------------------------
-def summarize_text(text, max_len=200):
-    prompt = f"summarize: {text}"
-
+def generate_output(prompt, max_len=200):
     inputs = tokenizer(
         prompt,
         return_tensors="pt",
@@ -46,19 +46,12 @@ def summarize_text(text, max_len=200):
     output_ids = model.generate(
         inputs["input_ids"],
         max_length=max_len,
-        min_length=60,
-        num_beams=3,
-        no_repeat_ngram_size=2,
-        repetition_penalty=1.2,
-        early_stopping=True
+        min_length=40,
+        num_beams=2,
+        do_sample=False
     )
 
-    summary = tokenizer.decode(
-        output_ids[0],
-        skip_special_tokens=True
-    )
-
-    return summary
+    return tokenizer.decode(output_ids[0], skip_special_tokens=True)
 
 # -----------------------------------------
 # PDF Generator
@@ -68,9 +61,7 @@ def generate_pdf(content):
     pdf.add_page()
     pdf.set_font("Arial", size=12)
     pdf.multi_cell(0, 8, content)
-    file_path = "Lecture_Notes.pdf"
-    pdf.output(file_path)
-    return file_path
+    return pdf.output(dest="S").encode("latin-1")
 
 # -----------------------------------------
 # User Input
@@ -80,57 +71,38 @@ lecture_text = st.text_area("📚 Paste Your Lecture Text Here", height=250)
 if st.button("Generate Smart Notes"):
 
     if lecture_text.strip() == "":
-        st.warning("Please enter lecture text.")
+        st.warning("Please paste lecture text.")
     else:
         cleaned_text = clean_text(lecture_text)
 
         st.subheader("📄 Cleaned Text")
         st.write(cleaned_text)
 
-        # Summary
+        # ---------------- Summary ----------------
         st.info("Generating Summary...")
-        summary_prompt = f"""
-        Provide a clear academic summary of the following lecture in 5-6 well-structured sentences:
-
-        {cleaned_text}
-        """
-        summary = generate_output(summary_prompt, 250)
+        summary_prompt = "Summarize this lecture:\n" + cleaned_text
+        summary = generate_output(summary_prompt, 180)
 
         st.subheader("📝 Summary")
         st.write(summary)
 
-        # Key Points
+        # ---------------- Key Points ----------------
         st.info("Extracting Key Points...")
-        keypoints_prompt = f"""
-        Extract exactly 5 concise bullet points from this lecture.
-        Format as:
-        - Point 1
-        - Point 2
-        - Point 3
-        - Point 4
-        - Point 5
-
-        {cleaned_text}
-        """
-        keypoints = generate_output(keypoints_prompt, 200)
+        key_prompt = "Extract 5 important bullet points from this lecture:\n" + cleaned_text
+        keypoints = generate_output(key_prompt, 150)
 
         st.subheader("📌 Key Points")
         st.write(keypoints)
 
-        # Quiz
+        # ---------------- Quiz ----------------
         st.info("Generating Quiz Questions...")
-        quiz_prompt = f"""
-        Generate exactly 3 short exam-style questions based on this lecture.
-        Only write the questions in numbered format.
-
-        {cleaned_text}
-        """
-        quiz = generate_output(quiz_prompt, 200)
+        quiz_prompt = "Generate 3 short quiz questions from this lecture:\n" + cleaned_text
+        quiz = generate_output(quiz_prompt, 150)
 
         st.subheader("❓ Quiz Questions")
         st.write(quiz)
 
-        # PDF
+        # ---------------- PDF Download ----------------
         if st.button("Download Notes as PDF"):
             full_content = f"""
 SUMMARY:
@@ -144,12 +116,9 @@ QUIZ QUESTIONS:
 """
             pdf_file = generate_pdf(full_content)
 
-            with open(pdf_file, "rb") as f:
-                st.download_button(
-                    "Click Here to Download PDF",
-                    f,
-                    file_name="Lecture_Notes.pdf"
-                )
-
-
-
+            st.download_button(
+                "Click Here to Download",
+                pdf_file,
+                file_name="Lecture_Notes.pdf",
+                mime="application/pdf"
+            )
