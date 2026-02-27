@@ -41,7 +41,7 @@ def generate_output(prompt, max_len=250):
         truncation=True
     )
 
-  output_ids = model.generate(
+  output_ids = model.generate (
     inputs.input_ids,
     max_length=max_len,
     min_length=60,
@@ -50,7 +50,7 @@ def generate_output(prompt, max_len=250):
     repetition_penalty=1.2,
     early_stopping=True
 )
-    ) 
+
 
     return tokenizer.decode(output_ids[0], skip_special_tokens=True)
 
@@ -144,4 +144,5 @@ QUIZ QUESTIONS:
                     f,
                     file_name="Lecture_Notes.pdf"
                 )
+
 
