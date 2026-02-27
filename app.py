@@ -8,37 +8,52 @@ st.title("🎓 EduNote AI")
 st.subheader("Lecture Text → Smart Notes Generator")
 
 # -----------------------------
-# Simple Text Cleaning
+# Text Cleaning
 # -----------------------------
 def clean_text(text):
+    text = text.replace('"', '')
     text = re.sub(r'\s+', ' ', text)
     return text.strip()
 
 # -----------------------------
-# Simple Extractive Summary
+# Smart Sentence Split
 # -----------------------------
-def generate_summary(text):
-    sentences = text.split(".")
-    summary = ". ".join(sentences[:3])
-    return summary.strip()
+def split_sentences(text):
+    # Avoid breaking decimal numbers like 3.13
+    text = re.sub(r'(\d)\.(\d)', r'\1<dot>\2', text)
+    sentences = re.split(r'\.\s+', text)
+    sentences = [s.replace('<dot>', '.') for s in sentences]
+    return [s.strip() for s in sentences if s.strip()]
 
 # -----------------------------
-# Key Points Generator
+# Summary
+# -----------------------------
+def generate_summary(text):
+    sentences = split_sentences(text)
+    return ". ".join(sentences[:3]) + "."
+
+# -----------------------------
+# Key Points
 # -----------------------------
 def generate_keypoints(text):
-    sentences = text.split(".")
-    points = sentences[:5]
-    return "\n".join([f"• {point.strip()}" for point in points if point.strip()])
+    sentences = split_sentences(text)
+    key_points = sentences[:5]
+    return "\n".join([f"• {point}" for point in key_points])
 
 # -----------------------------
 # Quiz Generator
 # -----------------------------
 def generate_quiz(text):
-    sentences = text.split(".")
+    sentences = split_sentences(text)
     questions = []
+
     for i, sentence in enumerate(sentences[:3]):
-        if sentence.strip():
-            questions.append(f"{i+1}. What does this mean?\n   → {sentence.strip()}?\n")
+        words = sentence.split()
+        if len(words) > 4:
+            keyword = words[0]
+            question = f"{i+1}. Explain the concept of '{keyword}' in the lecture."
+            questions.append(question)
+
     return "\n".join(questions)
 
 # -----------------------------
@@ -54,7 +69,7 @@ def generate_pdf(content):
     return file_path
 
 # -----------------------------
-# Text Input
+# UI
 # -----------------------------
 lecture_text = st.text_area("📚 Paste Your Lecture Text Here", height=250)
 
